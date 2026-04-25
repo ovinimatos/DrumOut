@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DrumOut — Remove bateria de qualquer música</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0a;
+      --surface:  #111111;
+      --border:   #222222;
+      --accent:   #c8f135;
+      --text:     #f0f0f0;
+      --muted:    #666666;
+      --error:    #ff4d4d;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image:
+        linear-gradient(rgba(200,241,53,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200,241,53,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* ── Layout ── */
+    .wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1.25rem;
+      gap: 2.5rem;
+      max-width: 680px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* ── Header ── */
+    .logo {
+      text-align: center;
+    }
+    .logo h1 {
+      font-size: clamp(3rem, 12vw, 5.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .logo p {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.5rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+      width: 100%;
+    }
+
+    /* ── Input row ── */
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .input-row input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.85rem;
+      padding: 0.75rem 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+      min-width: 0;
+    }
+    .input-row input::placeholder { color: var(--muted); }
+    .input-row input:focus { border-color: var(--accent); }
+
+    .btn-process {
+      background: var(--accent);
+      color: #0a0a0a;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 0.75rem 1.4rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    .btn-process:hover:not(:disabled) { opacity: 0.88; }
+    .btn-process:active:not(:disabled) { transform: scale(0.97); }
+    .btn-process:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Loading ── */
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.5rem 0;
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-msg {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      min-height: 1.2em;
+    }
+
+    /* ── Result ── */
+    #result {
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 0.25rem 0;
+    }
+    #result-title {
+      font-weight: 700;
+      font-size: 1rem;
+      word-break: break-word;
+    }
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent);
+      color: #0a0a0a;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 0.8rem 1.5rem;
+      text-decoration: none;
+      cursor: pointer;
+      width: fit-content;
+      transition: opacity 0.2s;
+    }
+    .btn-download:hover { opacity: 0.88; }
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.25rem 0.5rem;
+      color: var(--muted);
+    }
+
+    /* ── Error ── */
+    #error {
+      display: none;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 0.25rem 0;
+    }
+    #error-msg {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--error);
+      word-break: break-word;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1rem 0 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      padding: 1.5rem 1rem;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 420px) {
+      .input-row { flex-direction: column; }
+      .btn-process { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrapper">
+  <header class="logo">
+    <h1>DrumOut</h1>
+    <p>// cola o link do YouTube · remove a bateria · baixa o MP3</p>
+  </header>
+
+  <div class="card">
+    <div class="input-row">
+      <input
+        type="url"
+        id="url-input"
+        placeholder="https://www.youtube.com/watch?v=..."
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+      />
+      <button class="btn-process" id="btn-process" onclick="processar()">Processar</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading">
+      <hr class="divider" />
+      <div class="spinner"></div>
+      <span id="loading-msg">Baixando áudio do YouTube...</span>
+    </div>
+
+    <!-- Result -->
+    <div id="result">
+      <hr class="divider" />
+      <span id="result-title"></span>
+      <a id="download-link" class="btn-download" href="#" download>
+        &#8595; Baixar MP3 sem bateria
+      </a>
+      <div class="tags">
+        <span class="tag">MP3 · 192kbps</span>
+        <span class="tag">Demucs htdemucs</span>
+        <span class="tag">Stem: no_drums</span>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="error">
+      <hr class="divider" />
+      <span id="error-msg"></span>
+    </div>
+  </div>
+</div>
+
+<footer>uso pessoal &middot; não distribua conteúdo protegido</footer>
+
+<script>
+  const LOADING_MESSAGES = [
+    "Baixando áudio do YouTube...",
+    "Separando stems com Demucs...",
+    "Isso pode levar alguns minutos...",
+    "Quase lá...",
+  ];
+
+  let loadingInterval = null;
+  let loadingMsgIndex = 0;
+
+  function setSection(section) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("result").style.display  = "none";
+    document.getElementById("error").style.display   = "none";
+
+    if (section) {
+      document.getElementById(section).style.display = "flex";
+    }
+  }
+
+  function startLoading() {
+    loadingMsgIndex = 0;
+    document.getElementById("loading-msg").textContent = LOADING_MESSAGES[0];
+    setSection("loading");
+
+    loadingInterval = setInterval(() => {
+      loadingMsgIndex = (loadingMsgIndex + 1) % LOADING_MESSAGES.length;
+      document.getElementById("loading-msg").textContent = LOADING_MESSAGES[loadingMsgIndex];
+    }, 8000);
+  }
+
+  function stopLoading() {
+    clearInterval(loadingInterval);
+    loadingInterval = null;
+  }
+
+  async function processar() {
+    const input = document.getElementById("url-input");
+    const btn   = document.getElementById("btn-process");
+    const url   = input.value.trim();
+
+    if (!url) {
+      input.focus();
+      return;
+    }
+
+    btn.disabled = true;
+    startLoading();
+
+    try {
+      const res = await fetch("/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Erro desconhecido no servidor.");
+      }
+
+      stopLoading();
+      document.getElementById("result-title").textContent = data.title;
+      document.getElementById("download-link").href = data.download_url;
+      setSection("result");
+
+    } catch (err) {
+      stopLoading();
+      document.getElementById("error-msg").textContent = "❌ " + err.message;
+      setSection("error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("url-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") processar();
+  });
+</script>
+</body>
+</html>
