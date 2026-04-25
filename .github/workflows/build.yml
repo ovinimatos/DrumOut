@@ -1,0 +1,98 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches: ["claude/build-drumout-app-pPQE0"]
+  workflow_dispatch:   # permite disparar manualmente pelo botão no GitHub
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      # ── 1. Código ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Python ────────────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── 3. Cache pip (evita baixar 300 MB toda vez) ──────────────────────────
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-torch-cpu-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-torch-cpu-
+
+      # ── 4. ffmpeg via Chocolatey ─────────────────────────────────────────────
+      - name: Install ffmpeg
+        shell: pwsh
+        run: |
+          choco install ffmpeg --no-progress -y
+          New-Item -ItemType Directory -Force -Path assets | Out-Null
+          $src = (Get-Command ffmpeg.exe).Source
+          Copy-Item $src assets\ffmpeg.exe
+          Write-Host "ffmpeg: $((Get-Item assets\ffmpeg.exe).Length / 1MB -as [int]) MB"
+
+      # ── 5. Inno Setup ────────────────────────────────────────────────────────
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      # ── 6. Pré-requisitos do instalador (WebView2 + VC++ Redist) ────────────
+      - name: Download runtime prerequisites
+        shell: pwsh
+        run: |
+          $wc = New-Object System.Net.WebClient
+          Write-Host "Baixando WebView2 Bootstrapper..."
+          $wc.DownloadFile(
+            "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+            "$PWD\assets\MicrosoftEdgeWebview2Setup.exe"
+          )
+          Write-Host "Baixando VC++ Redistributable..."
+          $wc.DownloadFile(
+            "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+            "$PWD\assets\vc_redist.x64.exe"
+          )
+          Write-Host "Assets prontos:"
+          Get-ChildItem assets | Format-Table Name, Length
+
+      # ── 7. PyTorch CPU-only (~300 MB) ────────────────────────────────────────
+      - name: Install PyTorch CPU
+        run: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+      # ── 8. Demais dependências + PyInstaller ─────────────────────────────────
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt "pyinstaller>=6.10.0"
+
+      # ── 9. Build com PyInstaller ─────────────────────────────────────────────
+      - name: Build with PyInstaller
+        run: pyinstaller drumout.spec --noconfirm --clean
+
+      # ── 10. Copia ffmpeg para dist/ ──────────────────────────────────────────
+      - name: Copy ffmpeg to bundle
+        shell: pwsh
+        run: Copy-Item assets\ffmpeg.exe dist\DrumOut\ffmpeg.exe
+
+      # ── 11. Compila instalador .exe ──────────────────────────────────────────
+      - name: Compile Inno Setup installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path installer_output | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
+          Write-Host "Instalador gerado:"
+          Get-ChildItem installer_output | Format-Table Name, Length
+
+      # ── 12. Sobe o instalador como artefato para download ───────────────────
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrumOut-Windows-Installer
+          path: installer_output/DrumOut_Setup_v1.0.0.exe
+          retention-days: 30
+          if-no-files-found: error
