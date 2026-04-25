@@ -3,3 +3,4 @@ uvicorn==0.30.6
 yt-dlp>=2024.11.4
 demucs>=4.0.1
 python-multipart==0.0.12
+pywebview>=5.0

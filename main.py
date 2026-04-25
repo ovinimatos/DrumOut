@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import subprocess
 import uuid
@@ -27,11 +28,16 @@ log = logging.getLogger(__name__)
 # Dirs
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).parent
-TMP_DIR = BASE_DIR / "tmp"
+if getattr(sys, 'frozen', False):
+    # Rodando como bundle PyInstaller
+    BASE_DIR = Path(sys._MEIPASS)
+    TMP_DIR = Path.home() / "AppData" / "Local" / "DrumOut" / "tmp"
+else:
+    BASE_DIR = Path(__file__).parent
+    TMP_DIR = BASE_DIR / "tmp"
 FRONTEND_DIR = BASE_DIR / "frontend"
 
-TMP_DIR.mkdir(exist_ok=True)
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # App
@@ -90,8 +96,10 @@ async def process(req: ProcessRequest):
         log.info(f"[{job_id}] Baixando áudio com yt-dlp...")
 
         audio_template = str(job_dir / "audio.%(ext)s")
+        # sys.executable garante que o yt_dlp do bundle PyInstaller é usado
+        # em vez de buscar "yt-dlp" no PATH do sistema
         yt_cmd = [
-            "yt-dlp",
+            sys.executable, "-m", "yt_dlp",
             "--no-playlist",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -135,7 +143,7 @@ async def process(req: ProcessRequest):
         log.info(f"[{job_id}] Rodando Demucs (htdemucs --two-stems=drums)...")
 
         demucs_cmd = [
-            "python", "-m", "demucs",
+            sys.executable, "-m", "demucs",
             "--two-stems", "drums",
             "--mp3",
             "--mp3-bitrate", "192",
